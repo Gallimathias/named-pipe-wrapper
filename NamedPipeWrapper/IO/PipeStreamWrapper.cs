@@ -46,7 +46,7 @@ namespace NamedPipeWrapper.IO
         /// </returns>
         public bool IsConnected
         {
-            get { return BaseStream.IsConnected && _reader.IsConnected; }
+            get { return BaseStream.IsConnected && reader.IsConnected; }
         }
 
         /// <summary>
@@ -71,8 +71,8 @@ namespace NamedPipeWrapper.IO
             get { return BaseStream.CanWrite; }
         }
 
-        private readonly PipeStreamReader<TRead> _reader;
-        private readonly PipeStreamWriter<TWrite> _writer;
+        private readonly PipeStreamReader<TRead> reader;
+        private readonly PipeStreamWriter<TWrite> writer;
 
         /// <summary>
         /// Constructs a new <c>PipeStreamWrapper</c> object that reads from and writes to the given <paramref name="stream"/>.
@@ -81,8 +81,8 @@ namespace NamedPipeWrapper.IO
         public PipeStreamWrapper(PipeStream stream)
         {
             BaseStream = stream;
-            _reader = new PipeStreamReader<TRead>(BaseStream);
-            _writer = new PipeStreamWriter<TWrite>(BaseStream);
+            reader = new PipeStreamReader<TRead>(BaseStream);
+            writer = new PipeStreamWriter<TWrite>(BaseStream);
         }
 
         /// <summary>
@@ -93,7 +93,7 @@ namespace NamedPipeWrapper.IO
         /// <exception cref="SerializationException">An object in the graph of type parameter <typeparamref name="TRead"/> is not marked as serializable.</exception>
         public TRead ReadObject()
         {
-            return _reader.ReadObject();
+            return reader.ReadObject();
         }
 
         /// <summary>
@@ -103,7 +103,7 @@ namespace NamedPipeWrapper.IO
         /// <exception cref="SerializationException">An object in the graph of type parameter <typeparamref name="TRead"/> is not marked as serializable.</exception>
         public void WriteObject(TWrite obj)
         {
-            _writer.WriteObject(obj);
+            writer.WriteObject(obj);
         }
 
         /// <summary>
@@ -114,7 +114,7 @@ namespace NamedPipeWrapper.IO
         /// <exception cref="IOException">The pipe is broken or another I/O error occurred.</exception>
         public void WaitForPipeDrain()
         {
-            _writer.WaitForPipeDrain();
+            writer.WaitForPipeDrain();
         }
 
         /// <summary>
