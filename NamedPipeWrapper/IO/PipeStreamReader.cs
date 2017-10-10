@@ -26,7 +26,7 @@ namespace NamedPipeWrapper.IO
         /// </summary>
         public bool IsConnected { get; private set; }
 
-        private readonly BinaryFormatter _binaryFormatter = new BinaryFormatter();
+        private readonly BinaryFormatter binaryFormatter;
 
         /// <summary>
         /// Constructs a new <c>PipeStreamReader</c> object that reads data from the given <paramref name="stream"/>.
@@ -36,6 +36,7 @@ namespace NamedPipeWrapper.IO
         {
             BaseStream = stream;
             IsConnected = stream.IsConnected;
+            binaryFormatter = new BinaryFormatter();
         }
 
         #region Private stream readers
@@ -68,7 +69,7 @@ namespace NamedPipeWrapper.IO
             BaseStream.Read(data, 0, len);
             using (var memoryStream = new MemoryStream(data))
             {
-                return (T) _binaryFormatter.Deserialize(memoryStream);
+                return (T) binaryFormatter.Deserialize(memoryStream);
             }
         }
 

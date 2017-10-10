@@ -21,7 +21,7 @@ namespace NamedPipeWrapper.IO
         /// </summary>
         public PipeStream BaseStream { get; private set; }
 
-        private readonly BinaryFormatter _binaryFormatter = new BinaryFormatter();
+        private readonly BinaryFormatter binaryFormatter;
 
         /// <summary>
         /// Constructs a new <c>PipeStreamWriter</c> object that writes to given <paramref name="stream"/>.
@@ -30,6 +30,7 @@ namespace NamedPipeWrapper.IO
         public PipeStreamWriter(PipeStream stream)
         {
             BaseStream = stream;
+            binaryFormatter = new BinaryFormatter();
         }
 
         #region Private stream writers
@@ -41,7 +42,7 @@ namespace NamedPipeWrapper.IO
             {
                 using (var memoryStream = new MemoryStream())
                 {
-                    _binaryFormatter.Serialize(memoryStream, obj);
+                    binaryFormatter.Serialize(memoryStream, obj);
                     return memoryStream.ToArray();
                 }
             }
