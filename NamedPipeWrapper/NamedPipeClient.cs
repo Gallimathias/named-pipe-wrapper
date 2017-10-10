@@ -4,7 +4,6 @@ using System.IO.Pipes;
 using System.Linq;
 using System.Text;
 using System.Threading;
-using NamedPipeWrapper.Threading;
 
 namespace NamedPipeWrapper
 {
@@ -51,6 +50,10 @@ namespace NamedPipeWrapper
         public event ConnectionEventHandler<TRead, TWrite> Disconnected;
 
         /// <summary>
+        /// Invoked when the client connects to the server (e.g., the pipe is opened).
+        /// </summary>
+        public event ConnectionEventHandler<TRead, TWrite> Connected;
+        /// <summary>
         /// Invoked whenever an exception is thrown during a read or write operation on the named pipe.
         /// </summary>
         public event PipeExceptionEventHandler Error;
@@ -68,7 +71,7 @@ namespace NamedPipeWrapper
         private string ServerName { get; set; }
 
         /// <summary>
-        /// Constructs a new <c>NamedPipeClient</c> to connect to the <see cref="NamedPipeServer{TRead, TWrite}"/> specified by <paramref name="pipeName"/>.
+        /// Constructs a new <c>NamedPipeClient</c> to connect to the <see cref="Server{TRead, TWrite}"/> specified by <paramref name="pipeName"/>.
         /// </summary>
         /// <param name="pipeName">Name of the server's pipe</param>
         /// <param name="serverName">the Name of the server, default is  local machine</param>
@@ -88,9 +91,7 @@ namespace NamedPipeWrapper
         public void Start()
         {
             closedExplicitly = false;
-            var worker = new Worker();
-            worker.Error += OnError;
-            worker.DoWork(ListenSync);
+            BeginListening();
         }
 
         /// <summary>
@@ -115,23 +116,37 @@ namespace NamedPipeWrapper
 
         #region Wait for connection/disconnection
 
-        public void WaitForConnection() => connected.WaitOne();
+        public void WaitForConnection()
+        {
+            connected.WaitOne();
+        }
+        public void WaitForConnection(int millisecondsTimeout)
+        {
+            connected.WaitOne(millisecondsTimeout);
+        }
+        public void WaitForConnection(TimeSpan timeout)
+        {
+            connected.WaitOne(timeout);
+        }
 
-        public void WaitForConnection(int millisecondsTimeout) => connected.WaitOne(millisecondsTimeout);
-
-        public void WaitForConnection(TimeSpan timeout) => connected.WaitOne(timeout);
-
-        public void WaitForDisconnection() => disconnected.WaitOne();
-
-        public void WaitForDisconnection(int millisecondsTimeout) => disconnected.WaitOne(millisecondsTimeout);
-
-        public void WaitForDisconnection(TimeSpan timeout) => disconnected.WaitOne(timeout);
+        public void WaitForDisconnection()
+        {
+            disconnected.WaitOne();
+        }
+        public void WaitForDisconnection(int millisecondsTimeout)
+        {
+            disconnected.WaitOne(millisecondsTimeout);
+        }
+        public void WaitForDisconnection(TimeSpan timeout)
+        {
+            disconnected.WaitOne(timeout);
+        }
 
         #endregion
 
         #region Private methods
 
-        private void ListenSync()
+        private void BeginListening()
         {
             // Get the name of the data pipe that should be used from now on by this NamedPipeClient
             var handshake = PipeClientFactory.Connect<string, string>(pipeName, ServerName);
@@ -147,13 +162,14 @@ namespace NamedPipeWrapper
             connection.ReceiveMessage += OnReceiveMessage;
             connection.Error += ConnectionOnError;
             connection.Open();
-
             connected.Set();
+            Connected?.Invoke(connection);
         }
 
         private void OnDisconnected(NamedPipeConnection<TRead, TWrite> connection)
         {
-            Disconnected?.Invoke(connection);
+            if (Disconnected != null)
+                Disconnected(connection);
 
             disconnected.Set();
 
@@ -163,19 +179,28 @@ namespace NamedPipeWrapper
         }
 
         private void OnReceiveMessage(NamedPipeConnection<TRead, TWrite> connection, TRead message)
-            => ServerMessage?.Invoke(connection, message);
+        {
+            if (ServerMessage != null)
+                ServerMessage(connection, message);
+        }
 
         /// <summary>
         ///     Invoked on the UI thread.
         /// </summary>
         private void ConnectionOnError(NamedPipeConnection<TRead, TWrite> connection, Exception exception)
-            => OnError(exception);
-        
+        {
+            OnError(exception);
+        }
+
         /// <summary>
         ///     Invoked on the UI thread.
         /// </summary>
         /// <param name="exception"></param>
-        private void OnError(Exception exception) => Error?.Invoke(exception);
+        private void OnError(Exception exception)
+        {
+            if (Error != null)
+                Error(exception);
+        }
 
         #endregion
     }

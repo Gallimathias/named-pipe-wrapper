@@ -5,12 +5,11 @@ namespace NamedPipeWrapper
 {
     static class PipeClientFactory
     {
-        public static PipeStreamWrapper<TRead, TWrite> Connect<TRead, TWrite>(string pipeName,string serverName)
+        public static PipeStreamWrapper<TRead, TWrite> Connect<TRead, TWrite>(string pipeName, string serverName)
             where TRead : class
             where TWrite : class
-        {
-            return new PipeStreamWrapper<TRead, TWrite>(CreateAndConnectPipe(pipeName,serverName));
-        }
+        => new PipeStreamWrapper<TRead, TWrite>(CreateAndConnectPipe(pipeName, serverName));
+
 
         public static NamedPipeClientStream CreateAndConnectPipe(string pipeName, string serverName)
         {
@@ -19,12 +18,9 @@ namespace NamedPipeWrapper
             return pipe;
         }
 
-        private static NamedPipeClientStream CreatePipe(string pipeName,string serverName)
-            => new NamedPipeClientStream(
-                serverName,
-                pipeName,
-                PipeDirection.InOut,
+        private static NamedPipeClientStream CreatePipe(string pipeName, string serverName)
+            => new NamedPipeClientStream(serverName, pipeName, PipeDirection.InOut,
                 PipeOptions.Asynchronous | PipeOptions.WriteThrough);
-        
+
     }
 }

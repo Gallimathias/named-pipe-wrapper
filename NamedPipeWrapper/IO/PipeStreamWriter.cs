@@ -59,15 +59,11 @@ namespace NamedPipeWrapper.IO
             BaseStream.Write(lenbuf, 0, lenbuf.Length);
         }
 
-        private void WriteObject(byte[] data)
-        {
-            BaseStream.Write(data, 0, data.Length);
-        }
+        private void WriteObject(byte[] data) => BaseStream.Write(data, 0, data.Length);
 
-        private void Flush()
-        {
-            BaseStream.Flush();
-        }
+
+        private void Flush() => BaseStream.Flush();
+
 
         #endregion
 
@@ -90,9 +86,7 @@ namespace NamedPipeWrapper.IO
         /// <exception cref="ObjectDisposedException">The pipe is closed.</exception>
         /// <exception cref="NotSupportedException">The pipe does not support write operations.</exception>
         /// <exception cref="IOException">The pipe is broken or another I/O error occurred.</exception>
-        public void WaitForPipeDrain()
-        {
-            BaseStream.WaitForPipeDrain();
-        }
+        public void WaitForPipeDrain() => BaseStream.WaitForPipeDrain();
+
     }
 }

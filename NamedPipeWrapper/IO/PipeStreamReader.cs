@@ -62,7 +62,6 @@ namespace NamedPipeWrapper.IO
             return IPAddress.NetworkToHostOrder(BitConverter.ToInt32(lenbuf, 0));
         }
 
-        /// <exception cref="SerializationException">An object in the graph of type parameter <typeparamref name="T"/> is not marked as serializable.</exception>
         private T ReadObject(int len)
         {
             var data = new byte[len];

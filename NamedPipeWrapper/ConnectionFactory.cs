@@ -37,13 +37,12 @@ namespace NamedPipeWrapper
 
     static class ConnectionFactory
     {
-        private static int _lastId;
+        private static int lastId;
 
         public static NamedPipeConnection<TRead, TWrite> CreateConnection<TRead, TWrite>(PipeStream pipeStream)
             where TRead : class
             where TWrite : class
-        {
-            return new NamedPipeConnection<TRead, TWrite>(++_lastId, "Client " + _lastId, pipeStream);
-        }
+            => new NamedPipeConnection<TRead, TWrite>(++lastId, "Client " + lastId, pipeStream);
+
     }
 }

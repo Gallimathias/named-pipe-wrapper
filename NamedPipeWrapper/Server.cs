@@ -1,8 +1,11 @@
 ﻿using NamedPipeWrapper.IO;
-using NamedPipeWrapper.Threading;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO.Pipes;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace NamedPipeWrapper
 {
@@ -37,23 +40,25 @@ namespace NamedPipeWrapper
 
         private readonly string pipeName;
         private readonly PipeSecurity pipeSecurity;
-        private readonly List<NamedPipeConnection<TRead, TWrite>> connections;
+        private readonly ConcurrentDictionary<int, NamedPipeConnection<TRead, TWrite>> connections;
 
         private int nextPipeId;
 
         private volatile bool shouldKeepRunning;
         private volatile bool isRunning;
 
+        private CancellationTokenSource cancellationToken;
+
         /// <summary>
         /// Constructs a new <c>NamedPipeServer</c> object that listens for client connections on the given <paramref name="pipeName"/>.
         /// </summary>
         /// <param name="pipeName">Name of the pipe to listen on</param>
-        /// <param name="pipeSecurity">Controls the access to the pipe</param>
+        /// <param name="pipeSecurity">Access control role object for the pipe</param>
         public Server(string pipeName, PipeSecurity pipeSecurity)
         {
+            connections = new ConcurrentDictionary<int, NamedPipeConnection<TRead, TWrite>>();
             this.pipeName = pipeName;
             this.pipeSecurity = pipeSecurity;
-            connections = new List<NamedPipeConnection<TRead, TWrite>>();
         }
 
         /// <summary>
@@ -63,9 +68,8 @@ namespace NamedPipeWrapper
         public void Start()
         {
             shouldKeepRunning = true;
-            var worker = new Worker();
-            worker.Error += OnError;
-            worker.DoWork(ListenSync);
+            cancellationToken = new CancellationTokenSource();
+            BeginListening();
         }
 
         /// <summary>
@@ -75,12 +79,9 @@ namespace NamedPipeWrapper
         /// <param name="message"></param>
         public void PushMessage(TWrite message)
         {
-            lock (connections)
+            foreach (var client in connections.Values)
             {
-                foreach (var client in connections)
-                {
-                    client.PushMessage(message);
-                }
+                client.PushMessage(message);
             }
         }
 
@@ -89,121 +90,84 @@ namespace NamedPipeWrapper
         /// </summary>
         /// <param name="message"></param>
         /// <param name="clientName"></param>
-        public void PushMessage(TWrite message, string clientName)
-        {
-            lock (connections)
-            {
-                foreach (var client in connections)
-                {
-                    if (client.Name == clientName)
-                        client.PushMessage(message);
-                }
-            }
-        }
+        public void PushMessage(TWrite message, string clientName) =>
+            connections.Values.FirstOrDefault(c => c.Name == clientName).PushMessage(message);
 
         /// <summary>
         /// Closes all open client connections and stops listening for new ones.
         /// </summary>
         public void Stop()
         {
+            foreach (var client in connections.Values)
+                client.Close();
+
             shouldKeepRunning = false;
-
-            lock (connections)
-            {
-                foreach (var client in connections.ToArray())
-                {
-                    client.Close();
-                }
-            }
-
-            // If background thread is still listening for a client to connect,
-            // initiate a dummy connection that will allow the thread to exit.
-            //dummy connection will use the local server name.
-            var dummyClient = new NamedPipeClient<TRead, TWrite>(pipeName, ".");
-            dummyClient.Start();
-            dummyClient.WaitForConnection(TimeSpan.FromSeconds(2));
-            dummyClient.Stop();
-            dummyClient.WaitForDisconnection(TimeSpan.FromSeconds(2));
+            cancellationToken.Cancel();
+            cancellationToken.Dispose();
+            cancellationToken = null;
         }
 
         #region Private methods
 
-        private void ListenSync()
+        private void BeginListening()
         {
-            isRunning = true;
-            while (shouldKeepRunning)
-            {
-                WaitForConnection(pipeName, pipeSecurity);
-            }
-            isRunning = false;
+            if (shouldKeepRunning)
+                Task.Run(() => WaitForConnections(pipeName, pipeSecurity, OnClientConnect), cancellationToken.Token);
         }
 
-        private void WaitForConnection(string pipeName, PipeSecurity pipeSecurity)
+        private void WaitForConnections(string pipeName, PipeSecurity pipeSecurity,
+            Func<NamedPipeServerStream, bool> callback)
         {
-            NamedPipeServerStream handshakePipe = null;
-            NamedPipeServerStream dataPipe = null;
-            NamedPipeConnection<TRead, TWrite> connection = null;
+            isRunning = true;
 
             var connectionPipeName = GetNextConnectionPipeName(pipeName);
 
-            try
-            {
-                // Send the client the name of the data pipe to use
-                handshakePipe = PipeServerFactory.CreateAndConnectPipe(pipeName, pipeSecurity);
-                var handshakeWrapper = new PipeStreamWrapper<string, string>(handshakePipe);
-                handshakeWrapper.WriteObject(connectionPipeName);
-                handshakeWrapper.WaitForPipeDrain();
-                handshakeWrapper.Close();
+            var handshakePipe = PipeServerFactory.CreateAndConnectPipe(pipeName, pipeSecurity);
+            var handshakeWrapper = new PipeStreamWrapper<string, string>(handshakePipe);
+            var dataPipe = PipeServerFactory.CreatePipe(connectionPipeName, pipeSecurity);
 
-                // Wait for the client to connect to the data pipe
-                dataPipe = PipeServerFactory.CreatePipe(connectionPipeName, pipeSecurity);
-                dataPipe.WaitForConnection();
+            // Send the client the name of the data pipe to use               
+            handshakeWrapper.WriteObject(connectionPipeName);
+            handshakeWrapper.WaitForPipeDrain();
+            handshakeWrapper.Close();
 
-                // Add the client's connection to the list of connections
-                connection = ConnectionFactory.CreateConnection<TRead, TWrite>(dataPipe);
-                connection.ReceiveMessage += ClientOnReceiveMessage;
-                connection.Disconnected += ClientOnDisconnected;
-                connection.Error += ConnectionOnError;
-                connection.Open();
+            // Wait for the client to connect to the data pipe                
+            dataPipe.WaitForConnection();
+            Task.Run(() => callback?.Invoke(dataPipe));
 
-                lock (connections)
-                {
-                    connections.Add(connection);
-                }
-
-                ClientOnConnected(connection);
-            }
-            // Catch the IOException that is raised if the pipe is broken or disconnected.
-            catch (Exception e)
-            {
-                Console.Error.WriteLine("Named pipe is broken or disconnected: {0}", e);
-
-                Cleanup(handshakePipe);
-                Cleanup(dataPipe);
-
-                ClientOnDisconnected(connection);
-            }
+            isRunning = false;
+            if (shouldKeepRunning)
+                Task.Run(() => WaitForConnections(pipeName, pipeSecurity, OnClientConnect), cancellationToken.Token);
         }
 
-        private void ClientOnConnected(NamedPipeConnection<TRead, TWrite> connection) 
+        private bool OnClientConnect(NamedPipeServerStream dataPipe)
+        {
+            // Add the client's connection to the list of connections
+            var connection = ConnectionFactory.CreateConnection<TRead, TWrite>(dataPipe);
+            connection.ReceiveMessage += ClientOnReceiveMessage;
+            connection.Disconnected += ClientOnDisconnected;
+            connection.Error += ConnectionOnError;
+            connection.Open();
+
+            var res = connections.TryAdd(connection.Id, connection);
+            ClientOnConnected(connection);
+            return res;
+        }
+
+        private void ClientOnConnected(NamedPipeConnection<TRead, TWrite> connection)
             => ClientConnected?.Invoke(connection);
 
-
         private void ClientOnReceiveMessage(NamedPipeConnection<TRead, TWrite> connection, TRead message)
-                => ClientMessage?.Invoke(connection, message);
-
+            => ClientMessage?.Invoke(connection, message);
 
         private void ClientOnDisconnected(NamedPipeConnection<TRead, TWrite> connection)
         {
             if (connection == null)
                 return;
 
-            lock (connections)
-            {
-                connections.Remove(connection);
-            }
+            connections.TryRemove(connection.Id, out NamedPipeConnection<TRead, TWrite> tmpCon);
 
-            ClientDisconnected?.Invoke(connection);
+            ClientDisconnected?.Invoke(tmpCon);
         }
 
         /// <summary>
@@ -212,23 +176,20 @@ namespace NamedPipeWrapper
         private void ConnectionOnError(NamedPipeConnection<TRead, TWrite> connection, Exception exception)
             => OnError(exception);
 
-
         /// <summary>
         ///     Invoked on the UI thread.
         /// </summary>
         /// <param name="exception"></param>
-        private void OnError(Exception exception) => Error?.Invoke(exception);
+        private void OnError(Exception exception)
+            => Error?.Invoke(exception);
 
-
-        private string GetNextConnectionPipeName(string pipeName) => $"{pipeName}_{++nextPipeId}";
+        private string GetNextConnectionPipeName(string pipeName)
+            => $"{pipeName}_{++nextPipeId}";
 
         private static void Cleanup(NamedPipeServerStream pipe)
         {
-            if (pipe == null) return;
-            using (var x = pipe)
-            {
-                x.Close();
-            }
+            pipe?.Close();
+            pipe?.Dispose();
         }
 
         #endregion

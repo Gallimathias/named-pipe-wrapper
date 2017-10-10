@@ -21,7 +21,7 @@ namespace NamedPipeWrapper
         /// Constructs a new <c>NamedPipeServer</c> object that listens for client connections on the given <paramref name="pipeName"/>.
         /// </summary>
         /// <param name="pipeName">Name of the pipe to listen on</param>
-        /// <param name="pipeSecurity">Control the access to the pipe</param>
+        /// /// <param name="pipeSecurity">Access control role object for the pipe</param>
         public NamedPipeServer(string pipeName, PipeSecurity pipeSecurity)
             : base(pipeName, pipeSecurity)
         {
