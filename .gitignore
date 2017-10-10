@@ -9,3 +9,4 @@ publish
 /gh-pages
 *.backup
 /Artifacts
+/.vs/NamedPipeWrapper/v15/sqlite3/storage.ide
