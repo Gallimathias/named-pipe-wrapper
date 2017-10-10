@@ -49,6 +49,7 @@
     <Compile Include="IO\PipeStreamReader.cs" />
     <Compile Include="IO\PipeStreamWrapper.cs" />
     <Compile Include="IO\PipeStreamWriter.cs" />
+    <Compile Include="Nodes\Node.cs" />
     <Compile Include="PipeClientFactory.cs" />
     <Compile Include="PipeExceptionEventHandler.cs" />
     <Compile Include="PipeServerFactory.cs" />
